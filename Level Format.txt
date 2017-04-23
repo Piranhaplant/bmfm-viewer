@@ -1,0 +1,188 @@
+BIKER MICE FROM MARS LEVEL FORMAT
+by Piranhaplant
+________________________________________________________________________________
+
+This guide contains all of the level format that was necessary for me to write
+a level viewer. I have not figured out all of the necessary information to make
+completely custom tracks.
+
+The level data is found at 0xAB0E (PC address. There are 0x10 bytes for each of
+the 30 levels, giving 0x1E0 bytes total.
+
+LEVEL FORMAT
+
+Offset | Length | Description
+-------+--------+---------------------------------------------------------------
+   0x0 |      2 | A pointer to the level background data. This is relative to
+       |        | SNES bank 0x84. See Background Format for details.
+   0x2 |      2 | A pointer to the palette used in the level backgrounds. This
+       |        | is relative to SNES bank 0x81. See Palette Format.
+   0x4 |      2 | Pointer to the collision data?. Format unknown
+   0x6 |      2 | Always 00 00. Appears to change nothing
+   0x8 |      2 | Player start position
+   0xa |      2 | Player start direction
+   0xc |      2 | Unknown. Affects camera pan at the start of a race
+   0xe |      2 | Unknown. Appears to change nothing
+
+BACKGROUND FORMAT
+
+Offset | Length | Description
+-------+--------+---------------------------------------------------------------
+  0x00 |      2 | Always 01 80. Changing causes the level not to load
+  0x02 |      6 | Two 3 byte pointers to interleaved compressed data for the
+       |        | Background 1 small tile data. See Compression Format and Tile
+       |        | Format
+  0x08 |      6 | Two 3 byte pointers to interleaved compressed data for the
+       |        | Map16 data. See Map16 Format
+  0x0e |      3 | A pointer to compressed data for the Background 2 small tile
+       |        | data.
+  0x11 |      3 | A pointer to compressed data for the Background 1 large tiles
+  0x14 |      3 | A pointer to compressed data for the Background 2 large tiles
+  0x17 |      2 | Always ff ff. Changing this removes Background 1
+  0x19 |      2 | Always 01 00. Changing causes level to be glitchy or not load
+  0x1b |      3 | Always 00 40 7e. RAM pointer for Graphics 1 to be loaded to
+  0x1e |      3 | Pointer to compressed data for Graphics 1. Each graphics here
+       |        | contains one page/0x100 tiles/0x2000 bytes of data.
+  0x21 |      3 | Always 00 60 7e. RAM pointer for Graphics 2
+  0x24 |      3 | Pointer to compressed data for Graphics 2
+  0x27 |      3 | Always 00 80 7e. RAM pointer for Graphics 3
+  0x2a |      3 | Pointer to compressed data for Graphics 3
+  0x2d |      2 | Always ff ff
+  0x2f |      2 | Always 01 00
+  0x31 |      3 | Always 00 00 7f. RAM pointer for following thing
+  0x34 |      3 | Pointer to something that has to do with collision
+  0x37 |      3 | Always 00 38 7e. RAM pointer for following thing
+  0x3a |      3 | Pointer to data for CPUs?
+  0x3d |      2 | Always ff ff
+  0x3f |      3 | A pointer to something. Appears to change nothing
+  0x42 |      3 | Always 84 84 d2, a pointer to something. Appears to change
+       |        | nothing
+  0x45 |      3 | Always 00 00 00
+  0x48 |      3 | A pointer to something. Appears to change nothing
+  0x4b |      2 | Unknown. Appears to change nothing
+
+PALETTE FORMAT
+
+The palettes are made of sets of three bytes. These are loaded until the first
+two bytes of the set are both zero
+
+Offset | Length | Description
+-------+--------+---------------------------------------------------------------
+   0x0 |      2 | A pointer relative to bank 0x8a. This is the color data
+   0x2 |      1 | What palette number this is. It must be a multiple of 2. The
+       |        | index into the final output is this * 0x10
+
+The data at the pointer has the following format:
+
+First 2 bytes that specify how many bytes will be in the output. This is not the
+same as how many bytes are in the input
+Then this is repeated until that many bytes have been written:
+Read two bytes from input. If the high bit is set, take the low byte, multiply
+it by 2 and copy that many zero bytes into the output.
+Otherwise, copy these two bytes to output.
+
+Note: Every 0x20 bytes (at 0, 0x20, 0x40, etc.), two zero bytes are copied to
+the output. These bytes do not count towards the output byte count. This is the
+transparent color of the palette, so it is always set to 0
+
+MAP16 FORMAT
+
+Each block in the Map16 is 32x32 pixels composed of 16 8x8 tiles. The data for
+each tile is 2 bytes, giving 0x20 bytes per block. The tiles are stored left to
+right, top to bottom. The format of the two bytes is:
+
+gggggggg yx0pppgg
+
+g - 10 bits - the number of the graphics tile to use
+y - 1 bit   - flip this tile vertically
+x - 1 bit   - flip this tile horizontally
+p - 3 bits  - the palette used for this tile. The zero bit may also be part of
+              this, but this game only uses 3 bit palette numbers
+
+There is one slight catch, however. If the first two bytes of a block are
+greater than 0xFDB0, then this tile is a horizontally flipped copy of another
+tile. The number of this tile (in map16) is these two bytes - 0xFDB0. This
+block still occupies the 0x20 bytes per block with the rest of the data filled
+with zeros. This still saves space because the zeros will compress better.
+
+TILE FORMAT
+
+This is stored in two different places, the small tiles and the large tiles.
+
+The small tiles store an array of 256x256 pixel sets, which are made of 8x8
+of the 32x32 pixel blocks. These are stored left to right, top to bottom
+as always. Strangely, for Background 1, each block is specified with 2 bytes
+and for Background 2, each block is specified with one byte.
+
+The large tiles stores a 16x8 array of those 256x256 pixel sets. This makes up
+the final background. There is one byte for each of these sets.
+
+Basically, the tile arrangement is as follows:
+
+The 8x8 pixel graphics are arranged into 32x32 pixel blocks in the Map16
+The 32x32 blocks are arranged into 256x256 pixel sets in the small tiles
+The 256x256 sets are arranged into a 4096x2048 pixel image in the large tiles
+which makes up the final background
+
+COMPRESSION FORMAT
+
+This is a fairly standard dictionary based compression format. Things to know
+beforehand:
+
+The pointer to the compressed data stores a flag that indicates if the
+decompressed data will be interleaved with more decompressed data. This is
+specified in the second most significant bit of the pointer (the bank part).
+If this is set, then the resulting decompressed data will need to be alternated
+with the decompressed data from somewhere else. The actual pointer to the data
+is the same but with the two most significant bits removed.
+
+The first two bytes of compressed data indicate the length of the compressed
+file, not including these two bytes. Except, the most significant bit here
+specifies a sort of self-interleaving. For every 16 bytes in the final output,
+imagine they are ordered like this:
+
+00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
+
+Then they will be rearranged like this:
+
+00 08 01 09 02 10 03 11 04 12 05 13 06 14 07 15
+
+If neither of these are set, then the decompressed data is taken as is
+
+The dictionary used by the algorithm is 0x400 bytes long and starts at position
+zero. Bytes are first outputted into the dictionary and the dictionary is copied
+to the output whenever it is filled.
+
+Here is the format of the decompressed data:
+
+First, read a byte, I will call this byte1. The high bits of byte1 tell what
+operation to do.
+
+If the high bit is clear, this indicates copying from the dictionary. This
+operation also requires reading a second byte, byte2.
+The number of bytes to read is (byte1 >> 2) + 2
+The index into the dictionary to read from is
+((byte1 << 8 | byte2) - 0x3df) & 0x3ff
+
+If the highest 3 bits are 100, this indicates copying from the compressed data.
+The number of bytes to copy is byte1 & 0x1f
+
+If the highest 3 bits are 101, this indicates copying from compressed data, but
+alternated with zero bytes. A zero byte is written, then a byte from the data,
+then a zero byte, etc. The number of bytes (excluding the zero bytes) to read
+is (byte1 & 0x1f) + 2
+
+If the highest 3 bits are 110, this indicates outputting a bunch of copies of
+a particular byte. This requires a second byte, byte2. The number of copies
+to make is (byte1 & 0x1f) + 2. The byte to copy is byte2.
+
+If the highest 3 bits are 111, but byte1 != 0xff, this indicates outputting a
+bunch of zero bytes. The number of zero bytes to output is (byte1 & 0x1f) + 2.
+
+If byte1 = 0xff, this indicates outputting a lot of zero bytes. The number of
+zero bytes to output is a second byte, byte2 + 2
+
+Then another byte1 is read and the process is repeated until the end of the
+file. Once the file is done, the output bytes that have been put in the
+dictionary, but not yet moved to the output, need to be moved to the output.
+The output now contains the full decompressed data.
